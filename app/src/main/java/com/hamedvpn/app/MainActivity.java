@@ -1,3 +1,4 @@
+
 package com.hamedvpn.app;
 
 import android.app.Activity;
@@ -6,168 +7,247 @@ import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.view.Gravity;
-import android.widget.*;
 import android.view.View;
+import android.widget.*;
 
 public class MainActivity extends Activity {
 
-    private final int navy = Color.rgb(11, 21, 43);
-    private final int panel = Color.rgb(22, 37, 67);
-    private final int blue = Color.rgb(45, 137, 255);
+    private final int bg = Color.rgb(11, 8, 32);
+    private final int card = Color.rgb(22, 18, 46);
+    private final int purple = Color.rgb(139, 92, 246);
+    private final int blue = Color.rgb(59, 130, 246);
+    private final int green = Color.rgb(34, 197, 94);
+    private final int dim = Color.rgb(156, 163, 199);
+
     private TextView status;
+    private TextView connect;
+    private boolean connected = false;
 
     private int dp(float value) {
         return (int)(value *
-        getResources().getDisplayMetrics().density + 0.5f);
+            getResources().getDisplayMetrics().density + 0.5f);
     }
 
-    private GradientDrawable rounded(int color, int radius) {
+    private GradientDrawable shape(int color, int radius) {
         GradientDrawable d = new GradientDrawable();
         d.setColor(color);
         d.setCornerRadius(dp(radius));
         return d;
     }
 
-    private GradientDrawable gradient(int start, int end, int radius) {
+    private GradientDrawable gradient(int c1, int c2, int radius) {
         GradientDrawable d = new GradientDrawable(
             GradientDrawable.Orientation.TOP_BOTTOM,
-            new int[]{start, end});
+            new int[]{c1, c2});
         d.setCornerRadius(dp(radius));
         return d;
     }
 
-    private TextView label(String value, int size,
-                           int color, boolean bold) {
+    private TextView text(String value, int size,
+                          int color, boolean bold) {
         TextView t = new TextView(this);
         t.setText(value);
         t.setTextSize(size);
         t.setTextColor(color);
         t.setGravity(Gravity.CENTER);
-        t.setTypeface(Typeface.create("sans-serif",
-            bold ? Typeface.BOLD : Typeface.NORMAL));
+        t.setTypeface(Typeface.create(
+            "sans-serif", bold ? Typeface.BOLD : Typeface.NORMAL));
         return t;
+    }
+
+    private LinearLayout column() {
+        LinearLayout l = new LinearLayout(this);
+        l.setOrientation(LinearLayout.VERTICAL);
+        l.setGravity(Gravity.CENTER);
+        return l;
+    }
+
+    private LinearLayout row() {
+        LinearLayout l = new LinearLayout(this);
+        l.setOrientation(LinearLayout.HORIZONTAL);
+        l.setGravity(Gravity.CENTER);
+        return l;
+    }
+
+    private LinearLayout.LayoutParams params(int w, int h) {
+        return new LinearLayout.LayoutParams(
+            w == -1 ? -1 : dp(w),
+            h == -1 ? -1 : dp(h));
     }
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
-        getWindow().setStatusBarColor(Color.rgb(8,16,33));
-        getWindow().setNavigationBarColor(Color.rgb(8,16,33));
+        getWindow().setStatusBarColor(bg);
+        getWindow().setNavigationBarColor(bg);
 
-        LinearLayout root = new LinearLayout(this);
-        root.setOrientation(LinearLayout.VERTICAL);
-        root.setGravity(Gravity.CENTER_HORIZONTAL);
-        root.setPadding(dp(24),dp(24),dp(24),dp(22));
-        root.setBackground(gradient(
-            Color.rgb(17,34,65), navy, 0));
+        LinearLayout root = column();
+        root.setGravity(Gravity.TOP | Gravity.CENTER_HORIZONTAL);
+        root.setPadding(dp(20), dp(18), dp(20), dp(16));
+        root.setBackgroundColor(bg);
 
-        TextView brand = label("HAMED VPN",29,Color.WHITE,true);
-        brand.setLetterSpacing(0.08f);
+        // Header
+        LinearLayout header = row();
 
-        LinearLayout.LayoutParams bp =
-            new LinearLayout.LayoutParams(-1,dp(48));
-        bp.topMargin = dp(14);
-        root.addView(brand,bp);
+        TextView menu = text("☰", 25, purple, true);
+        header.addView(menu, params(40, 45));
 
-        TextView tagline = label(
-            "اتصال امن، ساده و سریع",
-            14,Color.rgb(160,184,220),false);
-        root.addView(tagline,
-            new LinearLayout.LayoutParams(-1,dp(30)));
+        TextView brand = text("HAMED VPN", 22, Color.WHITE, true);
+        header.addView(brand, new LinearLayout.LayoutParams(0,
+            dp(45), 1));
 
-        LinearLayout statusCard = new LinearLayout(this);
-        statusCard.setOrientation(LinearLayout.VERTICAL);
-        statusCard.setGravity(Gravity.CENTER);
-        statusCard.setPadding(dp(16),dp(14),dp(16),dp(14));
-        statusCard.setBackground(rounded(panel,18));
+        TextView crown = text("♛", 27,
+            Color.rgb(251, 191, 36), true);
+        header.addView(crown, params(40, 45));
 
-        TextView heading = label(
-            "وضعیت اتصال",13,Color.rgb(145,169,205),false);
+        root.addView(header, params(-1, 48));
 
-        status = label(
-            "هنوز متصل نشده‌اید",17,Color.WHITE,true);
+        TextView subtitle = text(
+            "اتصال امن، سریع و بدون محدودیت",
+            13, dim, false);
+        root.addView(subtitle, params(-1, 30));
 
-        status.setPadding(0,dp(5),0,0);
-        statusCard.addView(heading);
-        statusCard.addView(status);
+        // Status card
+        LinearLayout statusCard = row();
+        statusCard.setBackground(shape(card, 30));
+        statusCard.setPadding(dp(15), dp(10), dp(15), dp(10));
 
-        LinearLayout.LayoutParams sp =
-            new LinearLayout.LayoutParams(-1,dp(88));
-        sp.topMargin = dp(34);
-        root.addView(statusCard,sp);
+        View dot = new View(this);
+        GradientDrawable dotBg = new GradientDrawable();
+        dotBg.setShape(GradientDrawable.OVAL);
+        dotBg.setColor(dim);
+        dot.setBackground(dotBg);
+        statusCard.addView(dot, params(9, 9));
 
-        FrameLayout buttonFrame = new FrameLayout(this);
+        status = text("وضعیت: آماده اتصال", 13,
+            Color.WHITE, true);
+        LinearLayout.LayoutParams statusParams =
+            new LinearLayout.LayoutParams(-2, dp(30));
+        statusParams.leftMargin = dp(8);
+        statusCard.addView(status, statusParams);
 
-        GradientDrawable outer = new GradientDrawable();
-        outer.setShape(GradientDrawable.OVAL);
-        outer.setColor(Color.rgb(24,59,105));
-        outer.setStroke(dp(2),Color.rgb(53,126,215));
+        LinearLayout.LayoutParams statusCardParams =
+            params(-2, 48);
+        statusCardParams.topMargin = dp(18);
+        root.addView(statusCard, statusCardParams);
 
-        buttonFrame.setBackground(outer);
-        buttonFrame.setElevation(dp(12));
+        // Power button
+        FrameLayout powerFrame = new FrameLayout(this);
 
-        TextView connect = label("اتصال",23,Color.WHITE,true);
+        GradientDrawable ring = new GradientDrawable();
+        ring.setShape(GradientDrawable.OVAL);
+        ring.setColor(card);
+        ring.setStroke(dp(6), purple);
+
+        powerFrame.setBackground(ring);
+        powerFrame.setElevation(dp(18));
+
+        connect = text("⏻\nاتصال", 23,
+            Color.WHITE, true);
         connect.setBackground(gradient(
-            Color.rgb(48,151,255),
-            Color.rgb(24,93,196),100));
+            purple, Color.rgb(91, 33, 182), 100));
 
-        FrameLayout.LayoutParams cp =
+        FrameLayout.LayoutParams powerParams =
             new FrameLayout.LayoutParams(
-                dp(148),dp(148),Gravity.CENTER);
+                dp(150), dp(150), Gravity.CENTER);
 
-        buttonFrame.addView(connect,cp);
+        powerFrame.addView(connect, powerParams);
 
-        connect.setOnClickListener(v ->
-            status.setText(
-                "برای اتصال، ابتدا سرور VPN باید تنظیم شود.")
-        );
+        connect.setOnClickListener(v -> {
+            connected = !connected;
 
-        LinearLayout.LayoutParams btnp =
-            new LinearLayout.LayoutParams(dp(184),dp(184));
-        btnp.gravity = Gravity.CENTER_HORIZONTAL;
-        btnp.topMargin = dp(44);
-        root.addView(buttonFrame,btnp);
+            if (connected) {
+                status.setText("وضعیت: متصل (نمایشی)");
+                connect.setText("⏻\nقطع اتصال");
+                connect.setBackground(gradient(
+                    green, Color.rgb(5, 150, 105), 100));
+            } else {
+                status.setText("وضعیت: آماده اتصال");
+                connect.setText("⏻\nاتصال");
+                connect.setBackground(gradient(
+                    purple, Color.rgb(91, 33, 182), 100));
+            }
+        });
 
-        TextView hint = label(
+        LinearLayout.LayoutParams powerFrameParams =
+            params(190, 190);
+        powerFrameParams.topMargin = dp(35);
+        root.addView(powerFrame, powerFrameParams);
+
+        TextView hint = text(
             "برای شروع، دکمه اتصال را لمس کنید",
-            13,Color.rgb(151,174,209),false);
+            13, dim, false);
+        LinearLayout.LayoutParams hintParams = params(-1, 40);
+        hintParams.topMargin = dp(8);
+        root.addView(hint, hintParams);
 
-        LinearLayout.LayoutParams hp =
-            new LinearLayout.LayoutParams(-1,dp(42));
-        hp.topMargin = dp(10);
-        root.addView(hint,hp);
+        // Statistics
+        LinearLayout stats = row();
+        stats.setBackground(shape(card, 20));
+        stats.setPadding(dp(5), dp(14), dp(5), dp(14));
 
-        LinearLayout serverCard = new LinearLayout(this);
-        serverCard.setOrientation(LinearLayout.VERTICAL);
-        serverCard.setGravity(Gravity.CENTER);
-        serverCard.setPadding(dp(16),dp(13),dp(16),dp(13));
-        serverCard.setBackground(rounded(panel,18));
+        addStat(stats, "◷", "00:00:00", "مدت اتصال");
+        addStat(stats, "↓", "0.0", "KB/s دانلود");
+        addStat(stats, "↑", "0.0", "KB/s آپلود");
 
-        TextView serverTitle = label(
-            "سرور انتخابی",13,Color.rgb(145,169,205),false);
+        LinearLayout.LayoutParams statsParams = params(-1, 100);
+        statsParams.topMargin = dp(18);
+        root.addView(stats, statsParams);
 
-        TextView serverValue = label(
-            "هنوز سروری تنظیم نشده",15,Color.WHITE,true);
+        // Server card
+        LinearLayout server = row();
+        server.setBackground(shape(card, 20));
+        server.setPadding(dp(15), dp(12), dp(15), dp(12));
 
-        serverValue.setPadding(0,dp(5),0,0);
-        serverCard.addView(serverTitle);
-        serverCard.addView(serverValue);
+        TextView flag = text("🌍", 28, Color.WHITE, false);
+        server.addView(flag, params(48, 48));
 
-        LinearLayout.LayoutParams serverParams =
-            new LinearLayout.LayoutParams(-1,dp(82));
-        serverParams.topMargin = dp(28);
-        root.addView(serverCard,serverParams);
+        LinearLayout serverInfo = column();
+        serverInfo.setGravity(Gravity.CENTER_VERTICAL);
+        TextView serverTitle = text(
+            "سرور انتخابی", 12, dim, false);
+        TextView serverName = text(
+            "هنوز سروری انتخاب نشده", 14,
+            Color.WHITE, true);
 
-        TextView footer = label(
+        serverInfo.addView(serverTitle);
+        serverInfo.addView(serverName);
+
+        server.addView(serverInfo,
+            new LinearLayout.LayoutParams(0, dp(55), 1));
+
+        TextView arrow = text("‹", 30, dim, true);
+        server.addView(arrow, params(30, 48));
+
+        LinearLayout.LayoutParams serverParams = params(-1, 78);
+        serverParams.topMargin = dp(15);
+        root.addView(server, serverParams);
+
+        server.setOnClickListener(v ->
+            Toast.makeText(this,
+                "بخش انتخاب سرور به‌زودی اضافه می‌شود",
+                Toast.LENGTH_SHORT).show());
+
+        TextView footer = text(
             "HAMED VPN  •  اتصال امن شما",
-            11,Color.rgb(105,130,169),false);
-
-        LinearLayout.LayoutParams fp =
-            new LinearLayout.LayoutParams(-1,dp(42));
-        fp.topMargin = dp(18);
-        root.addView(footer,fp);
+            11, dim, false);
+        LinearLayout.LayoutParams footerParams = params(-1, 35);
+        footerParams.topMargin = dp(10);
+        root.addView(footer, footerParams);
 
         setContentView(root);
+    }
+
+    private void addStat(LinearLayout parent,
+                         String icon, String value, String label) {
+        LinearLayout item = column();
+
+        item.addView(text(icon, 22, purple, true));
+        item.addView(text(value, 14, Color.WHITE, true));
+        item.addView(text(label, 10, dim, false));
+
+        parent.addView(item,
+            new LinearLayout.LayoutParams(0, -1, 1));
     }
 }
