@@ -1,8 +1,10 @@
+
 package com.hamedvpn.app;
 
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
@@ -18,12 +20,21 @@ public class MainActivity extends Activity {
     private final int bg = Color.rgb(11, 8, 32);
     private final int card = Color.rgb(22, 18, 46);
     private final int purple = Color.rgb(139, 92, 246);
-    private final int blue = Color.rgb(59, 130, 246);
     private final int green = Color.rgb(34, 197, 94);
     private final int dim = Color.rgb(156, 163, 199);
 
     private static final String POWER = "\u23FB";
     private static final int REQ_VPN = 100;
+
+    private static final String[] SERVER_IDS = {
+            "turkey", "germany", "netherlands"
+    };
+
+    private static final String[] SERVER_LABELS = {
+            "🇹🇷  ترکیه",
+            "🇩🇪  آلمان",
+            "🇳🇱  هلند"
+    };
 
     private TextView status;
     private TextView connect;
@@ -92,6 +103,25 @@ public class MainActivity extends Activity {
 
         vpn = new VpnController(this);
 
+        SharedPreferences prefs =
+                getSharedPreferences("vpn", MODE_PRIVATE);
+
+        // انتقال کانفیگ نسخه قبلی به ترکیه
+        if (prefs.contains("conf") &&
+                !prefs.contains("conf_turkey")) {
+            prefs.edit()
+                    .putString("conf_turkey",
+                            prefs.getString("conf", ""))
+                    .remove("conf")
+                    .apply();
+        }
+
+        if (!prefs.contains("selected_server")) {
+            prefs.edit()
+                    .putString("selected_server", "turkey")
+                    .apply();
+        }
+
         LinearLayout root = column();
         root.setGravity(Gravity.TOP | Gravity.CENTER_HORIZONTAL);
         root.setPadding(dp(20), dp(18), dp(20), dp(16));
@@ -104,8 +134,8 @@ public class MainActivity extends Activity {
         header.addView(menu, params(40, 45));
 
         TextView brand = text("HAMED VPN", 22, Color.WHITE, true);
-        header.addView(brand, new LinearLayout.LayoutParams(0,
-                dp(45), 1));
+        header.addView(brand,
+                new LinearLayout.LayoutParams(0, dp(45), 1));
 
         TextView crown = text("♛", 27,
                 Color.rgb(251, 191, 36), true);
@@ -132,6 +162,7 @@ public class MainActivity extends Activity {
 
         status = text("وضعیت: آماده اتصال", 13,
                 Color.WHITE, true);
+
         LinearLayout.LayoutParams statusParams =
                 new LinearLayout.LayoutParams(-2, dp(30));
         statusParams.leftMargin = dp(8);
@@ -155,6 +186,7 @@ public class MainActivity extends Activity {
 
         connect = text(POWER + "\nاتصال", 23,
                 Color.WHITE, true);
+
         connect.setBackground(gradient(
                 purple, Color.rgb(91, 33, 182), 100));
 
@@ -166,10 +198,12 @@ public class MainActivity extends Activity {
 
         connect.setOnClickListener(v -> {
             if (busy) return;
+
             if (connected) {
                 busy = true;
                 status.setText("وضعیت: در حال قطع...");
-                vpn.disconnect((on, err) -> finishAction(on, err));
+                vpn.disconnect(
+                        (on, err) -> finishAction(on, err));
             } else {
                 startVpn();
             }
@@ -183,6 +217,7 @@ public class MainActivity extends Activity {
         TextView hint = text(
                 "برای شروع، دکمه اتصال را لمس کنید",
                 13, dim, false);
+
         LinearLayout.LayoutParams hintParams = params(-1, 40);
         hintParams.topMargin = dp(8);
         root.addView(hint, hintParams);
@@ -210,16 +245,13 @@ public class MainActivity extends Activity {
 
         LinearLayout serverInfo = column();
         serverInfo.setGravity(Gravity.CENTER_VERTICAL);
+
         TextView serverTitle = text(
                 "سرور انتخابی", 12, dim, false);
-        final TextView serverName = text(
-                "هنوز سروری انتخاب نشده", 14,
-                Color.WHITE, true);
 
-        if (getSharedPreferences("vpn", MODE_PRIVATE)
-                .getString("conf", null) != null) {
-            serverName.setText("WireGuard");
-        }
+        final TextView serverName = text(
+                getSelectedServerLabel(),
+                14, Color.WHITE, true);
 
         serverInfo.addView(serverTitle);
         serverInfo.addView(serverName);
@@ -234,11 +266,13 @@ public class MainActivity extends Activity {
         serverParams.topMargin = dp(15);
         root.addView(server, serverParams);
 
-        server.setOnClickListener(v -> showConfigDialog(serverName));
+        server.setOnClickListener(
+                v -> showServerDialog(serverName));
 
         TextView footer = text(
                 "HAMED VPN  •  اتصال امن شما",
                 11, dim, false);
+
         LinearLayout.LayoutParams footerParams = params(-1, 35);
         footerParams.topMargin = dp(10);
         root.addView(footer, footerParams);
@@ -258,8 +292,34 @@ public class MainActivity extends Activity {
                 new LinearLayout.LayoutParams(0, -1, 1));
     }
 
+    private String getSelectedServerId() {
+        return getSharedPreferences("vpn", MODE_PRIVATE)
+                .getString("selected_server", "turkey");
+    }
+
+    private String getSelectedServerLabel() {
+        String id = getSelectedServerId();
+
+        for (int i = 0; i < SERVER_IDS.length; i++) {
+            if (SERVER_IDS[i].equals(id)) {
+
+                String conf = getSharedPreferences(
+                        "vpn", MODE_PRIVATE)
+                        .getString("conf_" + id, null);
+
+                return SERVER_LABELS[i] +
+                        (conf == null || conf.trim().isEmpty()
+                                ? " • نیازمند کانفیگ"
+                                : " • آماده");
+            }
+        }
+
+        return "سروری انتخاب نشده";
+    }
+
     private void applyUi(boolean on) {
         connected = on;
+
         if (on) {
             status.setText("وضعیت: متصل");
             connect.setText(POWER + "\nقطع اتصال");
@@ -276,6 +336,7 @@ public class MainActivity extends Activity {
     private void finishAction(boolean on, String err) {
         busy = false;
         applyUi(on);
+
         if (err != null) {
             Toast.makeText(this, err, Toast.LENGTH_LONG).show();
         }
@@ -283,14 +344,17 @@ public class MainActivity extends Activity {
 
     private void startVpn() {
         String conf = getSharedPreferences("vpn", MODE_PRIVATE)
-                .getString("conf", null);
-        if (conf == null) {
+                .getString("conf_" + getSelectedServerId(), null);
+
+        if (conf == null || conf.trim().isEmpty()) {
             Toast.makeText(this,
-                    "ابتدا از بخش سرور انتخابی، کانفیگ را وارد کنید",
+                    "برای این سرور هنوز کانفیگ وارد نشده است",
                     Toast.LENGTH_LONG).show();
             return;
         }
+
         Intent prepare = VpnService.prepare(this);
+
         if (prepare != null) {
             startActivityForResult(prepare, REQ_VPN);
         } else {
@@ -300,38 +364,119 @@ public class MainActivity extends Activity {
 
     private void doConnect() {
         String conf = getSharedPreferences("vpn", MODE_PRIVATE)
-                .getString("conf", null);
-        if (conf == null) return;
+                .getString("conf_" + getSelectedServerId(), null);
+
+        if (conf == null || conf.trim().isEmpty()) return;
+
         busy = true;
         status.setText("وضعیت: در حال اتصال...");
-        vpn.connect(conf, (on, err) -> finishAction(on, err));
+
+        vpn.connect(conf,
+                (on, err) -> finishAction(on, err));
     }
 
     @Override
-    protected void onActivityResult(int req, int res, Intent data) {
+    protected void onActivityResult(
+            int req, int res, Intent data) {
         super.onActivityResult(req, res, data);
+
         if (req == REQ_VPN && res == RESULT_OK) {
             doConnect();
         }
     }
 
-    private void showConfigDialog(final TextView nameView) {
+    private void showServerDialog(final TextView nameView) {
+        SharedPreferences prefs =
+                getSharedPreferences("vpn", MODE_PRIVATE);
+
+        String[] items = new String[SERVER_IDS.length];
+
+        for (int i = 0; i < SERVER_IDS.length; i++) {
+            String id = SERVER_IDS[i];
+
+            String conf = prefs.getString("conf_" + id, null);
+
+            items[i] = SERVER_LABELS[i] +
+                    (conf == null || conf.trim().isEmpty()
+                            ? "   |   نیازمند کانفیگ"
+                            : "   |   کانفیگ ذخیره شده");
+        }
+
+        new AlertDialog.Builder(this)
+                .setTitle("انتخاب سرور")
+                .setItems(items, (dialog, which) -> {
+
+                    String id = SERVER_IDS[which];
+
+                    prefs.edit()
+                            .putString("selected_server", id)
+                            .apply();
+
+                    nameView.setText(getSelectedServerLabel());
+
+                    String conf = prefs.getString(
+                            "conf_" + id, null);
+
+                    if (conf == null || conf.trim().isEmpty()) {
+
+                        new AlertDialog.Builder(this)
+                                .setTitle("تنظیم " +
+                                        SERVER_LABELS[which])
+                                .setMessage(
+                                        "برای اتصال به این سرور، " +
+                                        "کانفیگ واقعی WireGuard مربوط " +
+                                        "به همین کشور را وارد کنید.")
+                                .setPositiveButton(
+                                        "وارد کردن کانفیگ",
+                                        (d, w) -> showConfigDialog(
+                                                nameView, id, which))
+                                .setNegativeButton("بعداً", null)
+                                .show();
+                    }
+                })
+                .setNegativeButton("بستن", null)
+                .show();
+    }
+
+    private void showConfigDialog(
+            final TextView nameView,
+            final String serverId,
+            final int serverIndex) {
+
         final EditText input = new EditText(this);
+
         input.setInputType(InputType.TYPE_CLASS_TEXT
                 | InputType.TYPE_TEXT_FLAG_MULTI_LINE);
+
         input.setMinLines(8);
         input.setGravity(Gravity.TOP | Gravity.START);
 
         new AlertDialog.Builder(this)
-                .setTitle("کانفیگ WireGuard")
-                .setMessage("محتوای فایل .conf را اینجا paste کنید")
+                .setTitle("کانفیگ " + SERVER_LABELS[serverIndex])
+                .setMessage(
+                        "محتوای فایل .conf مربوط به همین سرور را paste کنید")
                 .setView(input)
                 .setPositiveButton("ذخیره", (d, w) -> {
+
                     String conf = input.getText().toString().trim();
-                    if (conf.isEmpty()) return;
+
+                    if (conf.isEmpty()) {
+                        Toast.makeText(this,
+                                "کانفیگ خالی است",
+                                Toast.LENGTH_SHORT).show();
+                        return;
+                    }
+
                     getSharedPreferences("vpn", MODE_PRIVATE)
-                            .edit().putString("conf", conf).apply();
-                    nameView.setText("WireGuard");
+                            .edit()
+                            .putString("conf_" + serverId, conf)
+                            .apply();
+
+                    nameView.setText(getSelectedServerLabel());
+
+                    Toast.makeText(this,
+                            "کانفیگ این سرور ذخیره شد",
+                            Toast.LENGTH_SHORT).show();
                 })
                 .setNegativeButton("لغو", null)
                 .show();
