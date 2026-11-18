@@ -1,11 +1,14 @@
-
 package com.hamedvpn.app;
 
 import android.app.Activity;
-import android.os.Bundle;
+import android.app.AlertDialog;
+import android.content.Intent;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
+import android.net.VpnService;
+import android.os.Bundle;
+import android.text.InputType;
 import android.view.Gravity;
 import android.view.View;
 import android.widget.*;
@@ -19,13 +22,18 @@ public class MainActivity extends Activity {
     private final int green = Color.rgb(34, 197, 94);
     private final int dim = Color.rgb(156, 163, 199);
 
+    private static final String POWER = "\u23FB";
+    private static final int REQ_VPN = 100;
+
     private TextView status;
     private TextView connect;
     private boolean connected = false;
+    private boolean busy = false;
+    private VpnController vpn;
 
     private int dp(float value) {
-        return (int)(value *
-            getResources().getDisplayMetrics().density + 0.5f);
+        return (int) (value *
+                getResources().getDisplayMetrics().density + 0.5f);
     }
 
     private GradientDrawable shape(int color, int radius) {
@@ -37,8 +45,8 @@ public class MainActivity extends Activity {
 
     private GradientDrawable gradient(int c1, int c2, int radius) {
         GradientDrawable d = new GradientDrawable(
-            GradientDrawable.Orientation.TOP_BOTTOM,
-            new int[]{c1, c2});
+                GradientDrawable.Orientation.TOP_BOTTOM,
+                new int[]{c1, c2});
         d.setCornerRadius(dp(radius));
         return d;
     }
@@ -51,7 +59,7 @@ public class MainActivity extends Activity {
         t.setTextColor(color);
         t.setGravity(Gravity.CENTER);
         t.setTypeface(Typeface.create(
-            "sans-serif", bold ? Typeface.BOLD : Typeface.NORMAL));
+                "sans-serif", bold ? Typeface.BOLD : Typeface.NORMAL));
         return t;
     }
 
@@ -71,8 +79,8 @@ public class MainActivity extends Activity {
 
     private LinearLayout.LayoutParams params(int w, int h) {
         return new LinearLayout.LayoutParams(
-            w == -1 ? -1 : dp(w),
-            h == -1 ? -1 : dp(h));
+                w < 0 ? w : dp(w),
+                h < 0 ? h : dp(h));
     }
 
     @Override
@@ -81,6 +89,8 @@ public class MainActivity extends Activity {
 
         getWindow().setStatusBarColor(bg);
         getWindow().setNavigationBarColor(bg);
+
+        vpn = new VpnController(this);
 
         LinearLayout root = column();
         root.setGravity(Gravity.TOP | Gravity.CENTER_HORIZONTAL);
@@ -95,17 +105,17 @@ public class MainActivity extends Activity {
 
         TextView brand = text("HAMED VPN", 22, Color.WHITE, true);
         header.addView(brand, new LinearLayout.LayoutParams(0,
-            dp(45), 1));
+                dp(45), 1));
 
         TextView crown = text("♛", 27,
-            Color.rgb(251, 191, 36), true);
+                Color.rgb(251, 191, 36), true);
         header.addView(crown, params(40, 45));
 
         root.addView(header, params(-1, 48));
 
         TextView subtitle = text(
-            "اتصال امن، سریع و بدون محدودیت",
-            13, dim, false);
+                "اتصال امن، سریع و بدون محدودیت",
+                13, dim, false);
         root.addView(subtitle, params(-1, 30));
 
         // Status card
@@ -121,14 +131,14 @@ public class MainActivity extends Activity {
         statusCard.addView(dot, params(9, 9));
 
         status = text("وضعیت: آماده اتصال", 13,
-            Color.WHITE, true);
+                Color.WHITE, true);
         LinearLayout.LayoutParams statusParams =
-            new LinearLayout.LayoutParams(-2, dp(30));
+                new LinearLayout.LayoutParams(-2, dp(30));
         statusParams.leftMargin = dp(8);
         statusCard.addView(status, statusParams);
 
         LinearLayout.LayoutParams statusCardParams =
-            params(-2, 48);
+                params(-2, 48);
         statusCardParams.topMargin = dp(18);
         root.addView(statusCard, statusCardParams);
 
@@ -143,41 +153,36 @@ public class MainActivity extends Activity {
         powerFrame.setBackground(ring);
         powerFrame.setElevation(dp(18));
 
-        connect = text("⏻\nاتصال", 23,
-            Color.WHITE, true);
+        connect = text(POWER + "\nاتصال", 23,
+                Color.WHITE, true);
         connect.setBackground(gradient(
-            purple, Color.rgb(91, 33, 182), 100));
+                purple, Color.rgb(91, 33, 182), 100));
 
         FrameLayout.LayoutParams powerParams =
-            new FrameLayout.LayoutParams(
-                dp(150), dp(150), Gravity.CENTER);
+                new FrameLayout.LayoutParams(
+                        dp(150), dp(150), Gravity.CENTER);
 
         powerFrame.addView(connect, powerParams);
 
         connect.setOnClickListener(v -> {
-            connected = !connected;
-
+            if (busy) return;
             if (connected) {
-                status.setText("وضعیت: متصل (نمایشی)");
-                connect.setText("⏻\nقطع اتصال");
-                connect.setBackground(gradient(
-                    green, Color.rgb(5, 150, 105), 100));
+                busy = true;
+                status.setText("وضعیت: در حال قطع...");
+                vpn.disconnect((on, err) -> finishAction(on, err));
             } else {
-                status.setText("وضعیت: آماده اتصال");
-                connect.setText("⏻\nاتصال");
-                connect.setBackground(gradient(
-                    purple, Color.rgb(91, 33, 182), 100));
+                startVpn();
             }
         });
 
         LinearLayout.LayoutParams powerFrameParams =
-            params(190, 190);
+                params(190, 190);
         powerFrameParams.topMargin = dp(35);
         root.addView(powerFrame, powerFrameParams);
 
         TextView hint = text(
-            "برای شروع، دکمه اتصال را لمس کنید",
-            13, dim, false);
+                "برای شروع، دکمه اتصال را لمس کنید",
+                13, dim, false);
         LinearLayout.LayoutParams hintParams = params(-1, 40);
         hintParams.topMargin = dp(8);
         root.addView(hint, hintParams);
@@ -187,9 +192,9 @@ public class MainActivity extends Activity {
         stats.setBackground(shape(card, 20));
         stats.setPadding(dp(5), dp(14), dp(5), dp(14));
 
-        addStat(stats, "◷", "00:00:00", "مدت اتصال");
-        addStat(stats, "↓", "0.0", "KB/s دانلود");
-        addStat(stats, "↑", "0.0", "KB/s آپلود");
+        addStat(stats, "⏱", "00:00:00", "مدت اتصال");
+        addStat(stats, "↓", "0.0", "دانلود KB/s");
+        addStat(stats, "↑", "0.0", "آپلود KB/s");
 
         LinearLayout.LayoutParams statsParams = params(-1, 100);
         statsParams.topMargin = dp(18);
@@ -206,16 +211,21 @@ public class MainActivity extends Activity {
         LinearLayout serverInfo = column();
         serverInfo.setGravity(Gravity.CENTER_VERTICAL);
         TextView serverTitle = text(
-            "سرور انتخابی", 12, dim, false);
-        TextView serverName = text(
-            "هنوز سروری انتخاب نشده", 14,
-            Color.WHITE, true);
+                "سرور انتخابی", 12, dim, false);
+        final TextView serverName = text(
+                "هنوز سروری انتخاب نشده", 14,
+                Color.WHITE, true);
+
+        if (getSharedPreferences("vpn", MODE_PRIVATE)
+                .getString("conf", null) != null) {
+            serverName.setText("WireGuard");
+        }
 
         serverInfo.addView(serverTitle);
         serverInfo.addView(serverName);
 
         server.addView(serverInfo,
-            new LinearLayout.LayoutParams(0, dp(55), 1));
+                new LinearLayout.LayoutParams(0, dp(55), 1));
 
         TextView arrow = text("‹", 30, dim, true);
         server.addView(arrow, params(30, 48));
@@ -224,14 +234,11 @@ public class MainActivity extends Activity {
         serverParams.topMargin = dp(15);
         root.addView(server, serverParams);
 
-        server.setOnClickListener(v ->
-            Toast.makeText(this,
-                "بخش انتخاب سرور به‌زودی اضافه می‌شود",
-                Toast.LENGTH_SHORT).show());
+        server.setOnClickListener(v -> showConfigDialog(serverName));
 
         TextView footer = text(
-            "HAMED VPN  •  اتصال امن شما",
-            11, dim, false);
+                "HAMED VPN  •  اتصال امن شما",
+                11, dim, false);
         LinearLayout.LayoutParams footerParams = params(-1, 35);
         footerParams.topMargin = dp(10);
         root.addView(footer, footerParams);
@@ -248,6 +255,85 @@ public class MainActivity extends Activity {
         item.addView(text(label, 10, dim, false));
 
         parent.addView(item,
-            new LinearLayout.LayoutParams(0, -1, 1));
+                new LinearLayout.LayoutParams(0, -1, 1));
+    }
+
+    private void applyUi(boolean on) {
+        connected = on;
+        if (on) {
+            status.setText("وضعیت: متصل");
+            connect.setText(POWER + "\nقطع اتصال");
+            connect.setBackground(gradient(
+                    green, Color.rgb(5, 150, 105), 100));
+        } else {
+            status.setText("وضعیت: آماده اتصال");
+            connect.setText(POWER + "\nاتصال");
+            connect.setBackground(gradient(
+                    purple, Color.rgb(91, 33, 182), 100));
+        }
+    }
+
+    private void finishAction(boolean on, String err) {
+        busy = false;
+        applyUi(on);
+        if (err != null) {
+            Toast.makeText(this, err, Toast.LENGTH_LONG).show();
+        }
+    }
+
+    private void startVpn() {
+        String conf = getSharedPreferences("vpn", MODE_PRIVATE)
+                .getString("conf", null);
+        if (conf == null) {
+            Toast.makeText(this,
+                    "ابتدا از بخش سرور انتخابی، کانفیگ را وارد کنید",
+                    Toast.LENGTH_LONG).show();
+            return;
+        }
+        Intent prepare = VpnService.prepare(this);
+        if (prepare != null) {
+            startActivityForResult(prepare, REQ_VPN);
+        } else {
+            doConnect();
+        }
+    }
+
+    private void doConnect() {
+        String conf = getSharedPreferences("vpn", MODE_PRIVATE)
+                .getString("conf", null);
+        if (conf == null) return;
+        busy = true;
+        status.setText("وضعیت: در حال اتصال...");
+        vpn.connect(conf, (on, err) -> finishAction(on, err));
+    }
+
+    @Override
+    protected void onActivityResult(int req, int res, Intent data) {
+        super.onActivityResult(req, res, data);
+        if (req == REQ_VPN && res == RESULT_OK) {
+            doConnect();
+        }
+    }
+
+    private void showConfigDialog(final TextView nameView) {
+        final EditText input = new EditText(this);
+        input.setInputType(InputType.TYPE_CLASS_TEXT
+                | InputType.TYPE_TEXT_FLAG_MULTI_LINE);
+        input.setMinLines(8);
+        input.setGravity(Gravity.TOP | Gravity.START);
+
+        new AlertDialog.Builder(this)
+                .setTitle("کانفیگ WireGuard")
+                .setMessage("محتوای فایل .conf را اینجا paste کنید")
+                .setView(input)
+                .setPositiveButton("ذخیره", (d, w) -> {
+                    String conf = input.getText().toString().trim();
+                    if (conf.isEmpty()) return;
+                    getSharedPreferences("vpn", MODE_PRIVATE)
+                            .edit().putString("conf", conf).apply();
+                    nameView.setText("WireGuard");
+                })
+                .setNegativeButton("لغو", null)
+                .show();
     }
 }
