@@ -1,4 +1,3 @@
-
 package com.hamedvpn.app;
 
 import android.app.Activity;
@@ -10,41 +9,48 @@ import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.net.VpnService;
 import android.os.Bundle;
-import android.text.InputType;
 import android.view.Gravity;
 import android.view.View;
 import android.widget.*;
+import android.text.InputType;
 
 public class MainActivity extends Activity {
 
-    private final int bg = Color.rgb(11, 8, 32);
-    private final int card = Color.rgb(22, 18, 46);
-    private final int purple = Color.rgb(139, 92, 246);
-    private final int green = Color.rgb(34, 197, 94);
-    private final int dim = Color.rgb(156, 163, 199);
+    private final int bg = Color.rgb(8, 7, 19);
+    private final int card = Color.rgb(21, 19, 41);
+    private final int purple = Color.rgb(131, 30, 255);
+    private final int blue = Color.rgb(0, 200, 255);
+    private final int green = Color.rgb(50, 232, 176);
+    private final int dim = Color.rgb(153, 153, 170);
 
-    private static final String POWER = "\u23FB";
     private static final int REQ_VPN = 100;
 
-    private static final String[] SERVER_IDS = {
-            "turkey", "germany", "netherlands"
+    private static final String[] IDS = {
+        "turkey", "germany", "netherlands", "uk", "usa"
     };
 
-    private static final String[] SERVER_LABELS = {
-            "🇹🇷  ترکیه",
-            "🇩🇪  آلمان",
-            "🇳🇱  هلند"
+    private static final String[] LABELS = {
+        "🇹🇷  ترکیه - استانبول",
+        "🇩🇪  آلمان - فرانکفورت",
+        "🇳🇱  هلند - آمستردام",
+        "🇬🇧  انگلستان - لندن",
+        "🇺🇸  آمریکا - نیویورک"
     };
 
-    private TextView status;
-    private TextView connect;
+    private VpnController vpn;
+    private SharedPreferences prefs;
+
+    private String page = "splash";
     private boolean connected = false;
     private boolean busy = false;
-    private VpnController vpn;
+
+    private TextView status;
+    private TextView power;
+    private TextView selectedServer;
 
     private int dp(float value) {
         return (int) (value *
-                getResources().getDisplayMetrics().density + 0.5f);
+            getResources().getDisplayMetrics().density + 0.5f);
     }
 
     private GradientDrawable shape(int color, int radius) {
@@ -54,23 +60,21 @@ public class MainActivity extends Activity {
         return d;
     }
 
-    private GradientDrawable gradient(int c1, int c2, int radius) {
-        GradientDrawable d = new GradientDrawable(
-                GradientDrawable.Orientation.TOP_BOTTOM,
-                new int[]{c1, c2});
-        d.setCornerRadius(dp(radius));
+    private GradientDrawable outline(int color, int stroke, int radius) {
+        GradientDrawable d = shape(color, radius);
+        d.setStroke(dp(1), stroke);
         return d;
     }
 
-    private TextView text(String value, int size,
-                          int color, boolean bold) {
+    private TextView text(String value, int size, int color, boolean bold) {
         TextView t = new TextView(this);
         t.setText(value);
         t.setTextSize(size);
         t.setTextColor(color);
         t.setGravity(Gravity.CENTER);
         t.setTypeface(Typeface.create(
-                "sans-serif", bold ? Typeface.BOLD : Typeface.NORMAL));
+            "sans-serif", bold ? Typeface.BOLD : Typeface.NORMAL));
+        t.setPadding(dp(5), dp(5), dp(5), dp(5));
         return t;
     }
 
@@ -88,268 +92,568 @@ public class MainActivity extends Activity {
         return l;
     }
 
-    private LinearLayout.LayoutParams params(int w, int h) {
+    private LinearLayout.LayoutParams lp(int w, int h) {
         return new LinearLayout.LayoutParams(
-                w < 0 ? w : dp(w),
-                h < 0 ? h : dp(h));
+            w < 0 ? w : dp(w), h < 0 ? h : dp(h));
+    }
+
+    private void gap(LinearLayout parent, int height) {
+        parent.addView(new View(this), lp(1, height));
     }
 
     @Override
-    protected void onCreate(Bundle savedInstanceState) {
-        super.onCreate(savedInstanceState);
+    protected void onCreate(Bundle state) {
+        super.onCreate(state);
 
         getWindow().setStatusBarColor(bg);
         getWindow().setNavigationBarColor(bg);
 
         vpn = new VpnController(this);
+        prefs = getSharedPreferences("vpn", MODE_PRIVATE);
 
-        SharedPreferences prefs =
-                getSharedPreferences("vpn", MODE_PRIVATE);
-
-        // انتقال کانفیگ نسخه قبلی به ترکیه
-        if (prefs.contains("conf") &&
-                !prefs.contains("conf_turkey")) {
+        if (prefs.contains("conf") && !prefs.contains("conf_turkey")) {
             prefs.edit()
-                    .putString("conf_turkey",
-                            prefs.getString("conf", ""))
-                    .remove("conf")
-                    .apply();
+                .putString("conf_turkey", prefs.getString("conf", ""))
+                .remove("conf")
+                .apply();
         }
 
         if (!prefs.contains("selected_server")) {
-            prefs.edit()
-                    .putString("selected_server", "turkey")
-                    .apply();
+            prefs.edit().putString("selected_server", "turkey").apply();
         }
 
+        render();
+    }
+
+    private String serverId() {
+        return prefs.getString("selected_server", "turkey");
+    }
+
+    private int serverIndex(String id) {
+        for (int i = 0; i < IDS.length; i++) {
+            if (IDS[i].equals(id)) return i;
+        }
+        return 0;
+    }
+
+    private String serverLabel() {
+        int i = serverIndex(serverId());
+        String conf = prefs.getString("conf_" + IDS[i], "");
+        return LABELS[i] +
+            (conf.trim().isEmpty() ? " • نیازمند کانفیگ" : " • آماده");
+    }
+
+    private boolean hasConfig(String id) {
+        String conf = prefs.getString("conf_" + id, "");
+        return conf != null && !conf.trim().isEmpty();
+    }
+
+    private void render() {
         LinearLayout root = column();
         root.setGravity(Gravity.TOP | Gravity.CENTER_HORIZONTAL);
-        root.setPadding(dp(20), dp(18), dp(20), dp(16));
         root.setBackgroundColor(bg);
+        root.setPadding(dp(20), dp(16), dp(20), dp(16));
 
-        // Header
-        LinearLayout header = row();
+        ScrollView scroll = new ScrollView(this);
+        scroll.setFillViewport(true);
 
-        TextView menu = text("☰", 25, purple, true);
-        header.addView(menu, params(40, 45));
+        LinearLayout content = column();
+        content.setGravity(Gravity.TOP | Gravity.CENTER_HORIZONTAL);
 
-        TextView brand = text("HAMED VPN", 22, Color.WHITE, true);
-        header.addView(brand,
-                new LinearLayout.LayoutParams(0, dp(45), 1));
+        if (page.equals("splash")) {
+            splash(content);
+        } else if (page.equals("home")) {
+            home(content);
+        } else if (page.equals("servers")) {
+            servers(content);
+        } else if (page.equals("connected")) {
+            connectedPage(content);
+        } else if (page.equals("settings")) {
+            settings(content);
+        } else if (page.equals("profile")) {
+            profile(content);
+        }
 
-        TextView crown = text("♛", 27,
-                Color.rgb(251, 191, 36), true);
-        header.addView(crown, params(40, 45));
+        scroll.addView(content);
+        root.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
 
-        root.addView(header, params(-1, 48));
-
-        TextView subtitle = text(
-                "اتصال امن، سریع و بدون محدودیت",
-                13, dim, false);
-        root.addView(subtitle, params(-1, 30));
-
-        // Status card
-        LinearLayout statusCard = row();
-        statusCard.setBackground(shape(card, 30));
-        statusCard.setPadding(dp(15), dp(10), dp(15), dp(10));
-
-        View dot = new View(this);
-        GradientDrawable dotBg = new GradientDrawable();
-        dotBg.setShape(GradientDrawable.OVAL);
-        dotBg.setColor(dim);
-        dot.setBackground(dotBg);
-        statusCard.addView(dot, params(9, 9));
-
-        status = text("وضعیت: آماده اتصال", 13,
-                Color.WHITE, true);
-
-        LinearLayout.LayoutParams statusParams =
-                new LinearLayout.LayoutParams(-2, dp(30));
-        statusParams.leftMargin = dp(8);
-        statusCard.addView(status, statusParams);
-
-        LinearLayout.LayoutParams statusCardParams =
-                params(-2, 48);
-        statusCardParams.topMargin = dp(18);
-        root.addView(statusCard, statusCardParams);
-
-        // Power button
-        FrameLayout powerFrame = new FrameLayout(this);
-
-        GradientDrawable ring = new GradientDrawable();
-        ring.setShape(GradientDrawable.OVAL);
-        ring.setColor(card);
-        ring.setStroke(dp(6), purple);
-
-        powerFrame.setBackground(ring);
-        powerFrame.setElevation(dp(18));
-
-        connect = text(POWER + "\nاتصال", 23,
-                Color.WHITE, true);
-
-        connect.setBackground(gradient(
-                purple, Color.rgb(91, 33, 182), 100));
-
-        FrameLayout.LayoutParams powerParams =
-                new FrameLayout.LayoutParams(
-                        dp(150), dp(150), Gravity.CENTER);
-
-        powerFrame.addView(connect, powerParams);
-
-        connect.setOnClickListener(v -> {
-            if (busy) return;
-
-            if (connected) {
-                busy = true;
-                status.setText("وضعیت: در حال قطع...");
-                vpn.disconnect(
-                        (on, err) -> finishAction(on, err));
-            } else {
-                startVpn();
-            }
-        });
-
-        LinearLayout.LayoutParams powerFrameParams =
-                params(190, 190);
-        powerFrameParams.topMargin = dp(35);
-        root.addView(powerFrame, powerFrameParams);
-
-        TextView hint = text(
-                "برای شروع، دکمه اتصال را لمس کنید",
-                13, dim, false);
-
-        LinearLayout.LayoutParams hintParams = params(-1, 40);
-        hintParams.topMargin = dp(8);
-        root.addView(hint, hintParams);
-
-        // Statistics
-        LinearLayout stats = row();
-        stats.setBackground(shape(card, 20));
-        stats.setPadding(dp(5), dp(14), dp(5), dp(14));
-
-        addStat(stats, "⏱", "00:00:00", "مدت اتصال");
-        addStat(stats, "↓", "0.0", "دانلود KB/s");
-        addStat(stats, "↑", "0.0", "آپلود KB/s");
-
-        LinearLayout.LayoutParams statsParams = params(-1, 100);
-        statsParams.topMargin = dp(18);
-        root.addView(stats, statsParams);
-
-        // Server card
-        LinearLayout server = row();
-        server.setBackground(shape(card, 20));
-        server.setPadding(dp(15), dp(12), dp(15), dp(12));
-
-        TextView flag = text("🌍", 28, Color.WHITE, false);
-        server.addView(flag, params(48, 48));
-
-        LinearLayout serverInfo = column();
-        serverInfo.setGravity(Gravity.CENTER_VERTICAL);
-
-        TextView serverTitle = text(
-                "سرور انتخابی", 12, dim, false);
-
-        final TextView serverName = text(
-                getSelectedServerLabel(),
-                14, Color.WHITE, true);
-
-        serverInfo.addView(serverTitle);
-        serverInfo.addView(serverName);
-
-        server.addView(serverInfo,
-                new LinearLayout.LayoutParams(0, dp(55), 1));
-
-        TextView arrow = text("‹", 30, dim, true);
-        server.addView(arrow, params(30, 48));
-
-        LinearLayout.LayoutParams serverParams = params(-1, 78);
-        serverParams.topMargin = dp(15);
-        root.addView(server, serverParams);
-
-        server.setOnClickListener(
-                v -> showServerDialog(serverName));
-
-        TextView footer = text(
-                "HAMED VPN  •  اتصال امن شما",
-                11, dim, false);
-
-        LinearLayout.LayoutParams footerParams = params(-1, 35);
-        footerParams.topMargin = dp(10);
-        root.addView(footer, footerParams);
+        if (!page.equals("splash")) {
+            bottomNav(root);
+        }
 
         setContentView(root);
     }
 
-    private void addStat(LinearLayout parent,
-                         String icon, String value, String label) {
-        LinearLayout item = column();
+    private void header(LinearLayout parent, String subtitle) {
+        LinearLayout h = row();
 
-        item.addView(text(icon, 22, purple, true));
-        item.addView(text(value, 14, Color.WHITE, true));
-        item.addView(text(label, 10, dim, false));
+        TextView logo = text("⬡", 30, purple, true);
+        h.addView(logo, lp(45, 48));
 
-        parent.addView(item,
-                new LinearLayout.LayoutParams(0, -1, 1));
+        LinearLayout names = column();
+        names.setGravity(Gravity.CENTER_VERTICAL);
+        names.addView(text("HAMED VPN", 20, Color.WHITE, true));
+        names.addView(text(subtitle, 11, dim, false));
+
+        h.addView(names, new LinearLayout.LayoutParams(0, dp(52), 1));
+        h.addView(text("✦", 25, blue, true), lp(40, 48));
+
+        parent.addView(h, lp(-1, 55));
     }
 
-    private String getSelectedServerId() {
-        return getSharedPreferences("vpn", MODE_PRIVATE)
-                .getString("selected_server", "turkey");
+    private void splash(LinearLayout root) {
+        gap(root, 65);
+
+        TextView shield = text("⬡", 100, purple, true);
+        shield.setBackground(outline(card, purple, 35));
+        root.addView(shield, lp(170, 170));
+
+        gap(root, 24);
+        root.addView(text("HAMED VPN", 29, Color.WHITE, true));
+        root.addView(text("FAST  •  SECURE  •  PRIVATE", 12, blue, true));
+
+        gap(root, 18);
+        root.addView(text(
+            "آزادی در اینترنت، حق شماست",
+            16, Color.WHITE, true));
+
+        root.addView(text(
+            "اتصال امن و ساده با پروتکل WireGuard",
+            12, dim, false));
+
+        gap(root, 65);
+
+        Button start = button("شروع استفاده", purple);
+        root.addView(start, lp(-1, 54));
+        start.setOnClickListener(v -> {
+            page = "home";
+            render();
+        });
     }
 
-    private String getSelectedServerLabel() {
-        String id = getSelectedServerId();
+    private Button button(String label, int color) {
+        Button b = new Button(this);
+        b.setText(label);
+        b.setTextColor(Color.WHITE);
+        b.setTextSize(14);
+        b.setAllCaps(false);
+        b.setTypeface(null, Typeface.BOLD);
+        b.setBackground(shape(color, 18));
+        return b;
+    }
 
-        for (int i = 0; i < SERVER_IDS.length; i++) {
-            if (SERVER_IDS[i].equals(id)) {
+    private void home(LinearLayout root) {
+        header(root, "اتصال امن، سریع و خصوصی");
 
-                String conf = getSharedPreferences(
-                        "vpn", MODE_PRIVATE)
-                        .getString("conf_" + id, null);
+        gap(root, 12);
 
-                return SERVER_LABELS[i] +
-                        (conf == null || conf.trim().isEmpty()
-                                ? " • نیازمند کانفیگ"
-                                : " • آماده");
+        LinearLayout statusCard = row();
+        statusCard.setBackground(shape(card, 18));
+        status = text(
+            busy ? "در حال انجام عملیات..." :
+            connected ? "وضعیت: متصل" : "وضعیت: آماده اتصال",
+            14, connected ? green : Color.WHITE, true);
+
+        statusCard.addView(text(
+            connected ? "●" : "●", 13,
+            connected ? green : dim, true), lp(25, 45));
+        statusCard.addView(status,
+            new LinearLayout.LayoutParams(0, dp(45), 1));
+
+        root.addView(statusCard, lp(-1, 52));
+
+        gap(root, 24);
+
+        FrameLayout frame = new FrameLayout(this);
+        GradientDrawable ring = new GradientDrawable();
+        ring.setShape(GradientDrawable.OVAL);
+        ring.setColor(card);
+        ring.setStroke(dp(5), connected ? green : purple);
+        frame.setBackground(ring);
+        frame.setElevation(dp(12));
+
+        power = text(
+            connected ? "⏻\nقطع اتصال" :
+            busy ? "...\nلطفاً صبر کنید" : "⏻\nاتصال",
+            24, Color.WHITE, true);
+
+        power.setBackground(shape(
+            connected ? Color.rgb(5, 120, 95) : purple, 100));
+
+        FrameLayout.LayoutParams pp = new FrameLayout.LayoutParams(
+            dp(145), dp(145), Gravity.CENTER);
+        frame.addView(power, pp);
+
+        root.addView(frame, lp(180, 180));
+
+        power.setOnClickListener(v -> toggleVpn());
+
+        gap(root, 12);
+        root.addView(text(
+            connected ? "برای قطع اتصال لمس کنید" :
+            "برای اتصال، دکمه را لمس کنید",
+            12, dim, false));
+
+        gap(root, 22);
+
+        LinearLayout server = row();
+        server.setBackground(outline(card, purple, 18));
+        server.setPadding(dp(12), dp(8), dp(12), dp(8));
+
+        server.addView(text("🌍", 27, Color.WHITE, false), lp(48, 55));
+
+        selectedServer = text(serverLabel(), 13, Color.WHITE, true);
+        server.addView(selectedServer,
+            new LinearLayout.LayoutParams(0, dp(55), 1));
+
+        server.addView(text("‹", 27, blue, true), lp(30, 55));
+
+        root.addView(server, lp(-1, 75));
+        server.setOnClickListener(v -> {
+            page = "servers";
+            render();
+        });
+
+        gap(root, 18);
+        root.addView(text(
+            "آمار سرعت و مصرف پس از پیاده‌سازی اندازه‌گیری واقعی نمایش داده می‌شود.",
+            11, dim, false));
+    }
+
+    private void servers(LinearLayout root) {
+        header(root, "انتخاب موقعیت اتصال");
+
+        gap(root, 14);
+        root.addView(text("انتخاب سرور", 21, Color.WHITE, true));
+
+        EditText search = new EditText(this);
+        search.setSingleLine(true);
+        search.setTextColor(Color.WHITE);
+        search.setHintTextColor(dim);
+        search.setHint("جست‌وجوی کشور یا شهر");
+        search.setBackground(shape(card, 14));
+        search.setPadding(dp(14), 0, dp(14), 0);
+        root.addView(search, lp(-1, 50));
+
+        LinearLayout list = column();
+        list.setGravity(Gravity.TOP);
+        root.addView(list, lp(-1, -2));
+
+        Runnable refresh = () -> {
+            list.removeAllViews();
+            String q = search.getText().toString().trim().toLowerCase();
+
+            for (int i = 0; i < IDS.length; i++) {
+                final int index = i;
+
+                if (!LABELS[i].toLowerCase().contains(q)) continue;
+
+                LinearLayout item = row();
+                item.setBackground(outline(
+                    card, IDS[i].equals(serverId()) ? purple : card, 16));
+                item.setPadding(dp(8), dp(5), dp(8), dp(5));
+
+                item.addView(text("🌐", 23, Color.WHITE, false),
+                    lp(48, 58));
+
+                LinearLayout info = column();
+                info.setGravity(Gravity.CENTER_VERTICAL);
+                info.addView(text(LABELS[i], 13, Color.WHITE, true));
+
+                String detail = hasConfig(IDS[i])
+                    ? "کانفیگ ذخیره شده"
+                    : "نیازمند کانفیگ واقعی";
+
+                info.addView(text(detail, 10,
+                    hasConfig(IDS[i]) ? green : dim, false));
+
+                item.addView(info,
+                    new LinearLayout.LayoutParams(0, dp(60), 1));
+
+                item.addView(text("›", 25, blue, true),
+                    lp(35, 55));
+
+                list.addView(item, lp(-1, 72));
+                gap(list, 9);
+
+                item.setOnClickListener(v -> {
+                    if (connected || busy) {
+                        Toast.makeText(this,
+                            "ابتدا اتصال فعلی را قطع کنید",
+                            Toast.LENGTH_SHORT).show();
+                        return;
+                    }
+
+                    prefs.edit()
+                        .putString("selected_server", IDS[index])
+                        .apply();
+
+                    if (!hasConfig(IDS[index])) {
+                        showConfigDialog(index);
+                    } else {
+                        page = "home";
+                        render();
+                    }
+                });
             }
-        }
+        };
 
-        return "سروری انتخاب نشده";
+        search.addTextChangedListener(new android.text.TextWatcher() {
+            public void beforeTextChanged(CharSequence s, int st, int c, int a) {}
+            public void onTextChanged(CharSequence s, int st, int before, int count) {
+                refresh.run();
+            }
+            public void afterTextChanged(android.text.Editable e) {}
+        });
+
+        refresh.run();
+
+        gap(root, 12);
+        Button back = button("بازگشت به خانه", purple);
+        root.addView(back, lp(-1, 50));
+        back.setOnClickListener(v -> {
+            page = "home";
+            render();
+        });
     }
 
-    private void applyUi(boolean on) {
-        connected = on;
+    private void connectedPage(LinearLayout root) {
+        header(root, "وضعیت اتصال");
 
-        if (on) {
-            status.setText("وضعیت: متصل");
-            connect.setText(POWER + "\nقطع اتصال");
-            connect.setBackground(gradient(
-                    green, Color.rgb(5, 150, 105), 100));
+        gap(root, 45);
+        root.addView(text("✓", 65, green, true));
+        root.addView(text("اتصال برقرار است", 23, green, true));
+
+        gap(root, 12);
+        root.addView(text(
+            "سرور: " + serverLabel(),
+            14, Color.WHITE, true));
+
+        gap(root, 30);
+        root.addView(text(
+            "تونل WireGuard فعال است.",
+            12, dim, false));
+
+        gap(root, 35);
+        Button disconnect = button("قطع اتصال", Color.rgb(160, 35, 65));
+        root.addView(disconnect, lp(-1, 54));
+        disconnect.setOnClickListener(v -> toggleVpn());
+
+        gap(root, 12);
+        Button home = button("بازگشت به خانه", purple);
+        root.addView(home, lp(-1, 50));
+        home.setOnClickListener(v -> {
+            page = "home";
+            render();
+        });
+    }
+
+    private void settings(LinearLayout root) {
+        header(root, "تنظیمات برنامه");
+
+        gap(root, 20);
+        root.addView(text("تنظیمات عمومی", 19, Color.WHITE, true));
+
+        addSetting(root, "اعلان‌ها", "notifications", true);
+        addSetting(root, "حالت تاریک", "dark_mode", true);
+
+        gap(root, 18);
+        root.addView(text("تنظیمات امنیتی", 19, Color.WHITE, true));
+
+        LinearLayout kill = row();
+        kill.setBackground(shape(card, 15));
+        kill.addView(text(
+            "Kill Switch", 14, Color.WHITE, true),
+            new LinearLayout.LayoutParams(0, dp(60), 1));
+        kill.addView(text("در این نسخه پیاده‌سازی نشده",
+            10, dim, false), lp(150, 60));
+        root.addView(kill, lp(-1, 65));
+
+        addSetting(root, "زبان: فارسی", "language", false);
+
+        gap(root, 18);
+        root.addView(text(
+            "پروتکل اتصال: WireGuard",
+            13, blue, true));
+        root.addView(text(
+            "نسخه برنامه: 1.1",
+            12, dim, false));
+    }
+
+    private void addSetting(
+        LinearLayout root, String label,
+        String key, boolean toggle) {
+
+        LinearLayout item = row();
+        item.setBackground(shape(card, 15));
+        item.setPadding(dp(12), 0, dp(12), 0);
+
+        item.addView(text(label, 14, Color.WHITE, true),
+            new LinearLayout.LayoutParams(0, dp(58), 1));
+
+        if (toggle) {
+            Switch sw = new Switch(this);
+            sw.setChecked(prefs.getBoolean(key, true));
+            sw.setOnCheckedChangeListener((b, checked) ->
+                prefs.edit().putBoolean(key, checked).apply());
+            item.addView(sw);
         } else {
-            status.setText("وضعیت: آماده اتصال");
-            connect.setText(POWER + "\nاتصال");
-            connect.setBackground(gradient(
-                    purple, Color.rgb(91, 33, 182), 100));
+            item.addView(text("فعال", 12, green, false), lp(55, 58));
         }
+
+        root.addView(item, lp(-1, 65));
+        gap(root, 8);
     }
 
-    private void finishAction(boolean on, String err) {
-        busy = false;
-        applyUi(on);
+    private void profile(LinearLayout root) {
+        header(root, "حساب کاربری");
 
-        if (err != null) {
-            Toast.makeText(this, err, Toast.LENGTH_LONG).show();
-        }
-    }
+        gap(root, 30);
+        root.addView(text("◉", 65, purple, true));
+        root.addView(text("HAMED VPN", 23, Color.WHITE, true));
 
-    private void startVpn() {
-        String conf = getSharedPreferences("vpn", MODE_PRIVATE)
-                .getString("conf_" + getSelectedServerId(), null);
+        gap(root, 20);
+        root.addView(text(
+            "پروفایل کاربری",
+            16, blue, true));
 
-        if (conf == null || conf.trim().isEmpty()) {
+        gap(root, 12);
+        root.addView(text(
+            "مدیریت حساب و اشتراک در نسخه‌های بعدی اضافه می‌شود.",
+            13, dim, false));
+
+        gap(root, 25);
+        Button support = button("پشتیبانی", purple);
+        root.addView(support, lp(-1, 50));
+        support.setOnClickListener(v ->
             Toast.makeText(this,
-                    "برای این سرور هنوز کانفیگ وارد نشده است",
-                    Toast.LENGTH_LONG).show();
+                "بخش پشتیبانی هنوز راه‌اندازی نشده است",
+                Toast.LENGTH_SHORT).show());
+
+        gap(root, 12);
+        root.addView(text(
+            "اطلاعات مصرف و اشتراک فعلاً در دسترس نیست.",
+            11, dim, false));
+    }
+
+    private void bottomNav(LinearLayout root) {
+        LinearLayout nav = row();
+        nav.setBackground(shape(card, 18));
+        nav.setPadding(dp(3), dp(5), dp(3), dp(5));
+
+        addNav(nav, "⌂\nخانه", "home");
+        addNav(nav, "◎\nسرورها", "servers");
+        addNav(nav, "✓\nاتصال", "connected");
+        addNav(nav, "⚙\nتنظیمات", "settings");
+        addNav(nav, "◉\nپروفایل", "profile");
+
+        root.addView(nav, lp(-1, 62));
+    }
+
+    private void addNav(
+        LinearLayout nav, String label, String destination) {
+
+        TextView item = text(label, 10,
+            page.equals(destination) ? blue : dim, true);
+
+        nav.addView(item,
+            new LinearLayout.LayoutParams(0, dp(52), 1));
+
+        item.setOnClickListener(v -> {
+            if (destination.equals("connected") && !connected) {
+                Toast.makeText(this,
+                    "هنوز به VPN متصل نیستید",
+                    Toast.LENGTH_SHORT).show();
+                return;
+            }
+
+            page = destination;
+            render();
+        });
+    }
+
+    private void showConfigDialog(int index) {
+        EditText input = new EditText(this);
+        input.setTextColor(Color.WHITE);
+        input.setHintTextColor(dim);
+        input.setHint("[Interface] ...");
+        input.setGravity(Gravity.TOP | Gravity.START);
+        input.setMinLines(8);
+        input.setInputType(
+            InputType.TYPE_CLASS_TEXT |
+            InputType.TYPE_TEXT_FLAG_MULTI_LINE);
+
+        AlertDialog dialog = new AlertDialog.Builder(this)
+            .setTitle("کانفیگ " + LABELS[index])
+            .setMessage(
+                "متن کانفیگ واقعی WireGuard همین سرور را وارد کنید.")
+            .setView(input)
+            .setPositiveButton("ذخیره", null)
+            .setNegativeButton("لغو", (d, w) -> {
+                page = "servers";
+                render();
+            })
+            .create();
+
+        dialog.setOnShowListener(d -> {
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE)
+                .setOnClickListener(v -> {
+                    String conf = input.getText().toString().trim();
+
+                    if (!conf.contains("[Interface]") ||
+                        !conf.contains("[Peer]")) {
+                        Toast.makeText(this,
+                            "ساختار کانفیگ WireGuard معتبر به نظر نمی‌رسد",
+                            Toast.LENGTH_LONG).show();
+                        return;
+                    }
+
+                    prefs.edit()
+                        .putString("conf_" + IDS[index], conf)
+                        .putString("selected_server", IDS[index])
+                        .apply();
+
+                    dialog.dismiss();
+                    page = "home";
+                    render();
+                    Toast.makeText(this,
+                        "کانفیگ ذخیره شد؛ اعتبار اتصال هنوز آزمایش نشده است",
+                        Toast.LENGTH_LONG).show();
+                });
+        });
+
+        dialog.show();
+    }
+
+    private void toggleVpn() {
+        if (busy) return;
+
+        if (connected) {
+            busy = true;
+            if (status != null) status.setText("در حال قطع اتصال...");
+            render();
+
+            vpn.disconnect((on, error) -> {
+                connected = on;
+                busy = false;
+                page = "home";
+                render();
+
+                if (error != null) {
+                    Toast.makeText(this, error, Toast.LENGTH_LONG).show();
+                }
+            });
+            return;
+        }
+
+        String conf = prefs.getString("conf_" + serverId(), "");
+
+        if (conf.trim().isEmpty()) {
+            Toast.makeText(this,
+                "برای این سرور ابتدا کانفیگ وارد کنید",
+                Toast.LENGTH_LONG).show();
+            page = "servers";
+            render();
             return;
         }
 
@@ -363,122 +667,54 @@ public class MainActivity extends Activity {
     }
 
     private void doConnect() {
-        String conf = getSharedPreferences("vpn", MODE_PRIVATE)
-                .getString("conf_" + getSelectedServerId(), null);
+        String conf = prefs.getString("conf_" + serverId(), "");
 
-        if (conf == null || conf.trim().isEmpty()) return;
+        if (conf.trim().isEmpty()) return;
 
         busy = true;
-        status.setText("وضعیت: در حال اتصال...");
+        page = "home";
+        render();
 
-        vpn.connect(conf,
-                (on, err) -> finishAction(on, err));
+        vpn.connect(conf, (on, error) -> {
+            connected = on;
+            busy = false;
+            page = on ? "connected" : "home";
+            render();
+
+            if (error != null) {
+                Toast.makeText(this, error, Toast.LENGTH_LONG).show();
+            }
+        });
     }
 
     @Override
     protected void onActivityResult(
-            int req, int res, Intent data) {
-        super.onActivityResult(req, res, data);
+        int request, int result, Intent data) {
 
-        if (req == REQ_VPN && res == RESULT_OK) {
-            doConnect();
+        super.onActivityResult(request, result, data);
+
+        if (request == REQ_VPN) {
+            if (result == RESULT_OK) {
+                doConnect();
+            } else {
+                Toast.makeText(this,
+                    "اجازه ایجاد اتصال VPN داده نشد",
+                    Toast.LENGTH_LONG).show();
+                page = "home";
+                render();
+            }
         }
     }
 
-    private void showServerDialog(final TextView nameView) {
-        SharedPreferences prefs =
-                getSharedPreferences("vpn", MODE_PRIVATE);
-
-        String[] items = new String[SERVER_IDS.length];
-
-        for (int i = 0; i < SERVER_IDS.length; i++) {
-            String id = SERVER_IDS[i];
-
-            String conf = prefs.getString("conf_" + id, null);
-
-            items[i] = SERVER_LABELS[i] +
-                    (conf == null || conf.trim().isEmpty()
-                            ? "   |   نیازمند کانفیگ"
-                            : "   |   کانفیگ ذخیره شده");
+    @Override
+    public void onBackPressed() {
+        if (page.equals("splash")) {
+            super.onBackPressed();
+        } else if (page.equals("home")) {
+            super.onBackPressed();
+        } else {
+            page = "home";
+            render();
         }
-
-        new AlertDialog.Builder(this)
-                .setTitle("انتخاب سرور")
-                .setItems(items, (dialog, which) -> {
-
-                    String id = SERVER_IDS[which];
-
-                    prefs.edit()
-                            .putString("selected_server", id)
-                            .apply();
-
-                    nameView.setText(getSelectedServerLabel());
-
-                    String conf = prefs.getString(
-                            "conf_" + id, null);
-
-                    if (conf == null || conf.trim().isEmpty()) {
-
-                        new AlertDialog.Builder(this)
-                                .setTitle("تنظیم " +
-                                        SERVER_LABELS[which])
-                                .setMessage(
-                                        "برای اتصال به این سرور، " +
-                                        "کانفیگ واقعی WireGuard مربوط " +
-                                        "به همین کشور را وارد کنید.")
-                                .setPositiveButton(
-                                        "وارد کردن کانفیگ",
-                                        (d, w) -> showConfigDialog(
-                                                nameView, id, which))
-                                .setNegativeButton("بعداً", null)
-                                .show();
-                    }
-                })
-                .setNegativeButton("بستن", null)
-                .show();
-    }
-
-    private void showConfigDialog(
-            final TextView nameView,
-            final String serverId,
-            final int serverIndex) {
-
-        final EditText input = new EditText(this);
-
-        input.setInputType(InputType.TYPE_CLASS_TEXT
-                | InputType.TYPE_TEXT_FLAG_MULTI_LINE);
-
-        input.setMinLines(8);
-        input.setGravity(Gravity.TOP | Gravity.START);
-
-        new AlertDialog.Builder(this)
-                .setTitle("کانفیگ " + SERVER_LABELS[serverIndex])
-                .setMessage(
-                        "محتوای فایل .conf مربوط به همین سرور را paste کنید")
-                .setView(input)
-                .setPositiveButton("ذخیره", (d, w) -> {
-
-                    String conf = input.getText().toString().trim();
-
-                    if (conf.isEmpty()) {
-                        Toast.makeText(this,
-                                "کانفیگ خالی است",
-                                Toast.LENGTH_SHORT).show();
-                        return;
-                    }
-
-                    getSharedPreferences("vpn", MODE_PRIVATE)
-                            .edit()
-                            .putString("conf_" + serverId, conf)
-                            .apply();
-
-                    nameView.setText(getSelectedServerLabel());
-
-                    Toast.makeText(this,
-                            "کانفیگ این سرور ذخیره شد",
-                            Toast.LENGTH_SHORT).show();
-                })
-                .setNegativeButton("لغو", null)
-                .show();
     }
 }
